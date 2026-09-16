@@ -2,8 +2,13 @@ name: Enviar Boletin Diario
 
 on:
   schedule:
-    - cron: '0 5 * * *'
-  workflow_dispatch:
+    # 04:30 UTC -> 06:30 Hora de España
+    - cron: '30 4 * * *'
+    # 10:00 UTC -> 12:00 Hora de España
+    - cron: '0 10 * * *'
+    # 13:00 UTC -> 15:00 Hora de España
+    - cron: '0 13 * * *'
+  workflow_dispatch: # Permite lanzarlo manualmente desde la pestaña Actions en GitHub
 
 jobs:
   ejecutar:
@@ -28,5 +33,5 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python boletin_estado_carreteras.py
+        run: python boletin_estado_trafico.py
         
