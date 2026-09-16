@@ -1,0 +1,32 @@
+name: Enviar Boletin Diario
+
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  ejecutar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v3
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Instalar ffmpeg del sistema
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Instalar dependencias
+        run: pip install pydub google-genai lxml requests
+
+      - name: Ejecutar script
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python boletin_estado_carreteras.py
+        
