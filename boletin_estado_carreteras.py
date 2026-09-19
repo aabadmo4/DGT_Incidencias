@@ -1,6 +1,7 @@
 import os
 import re
 import datetime
+from zoneinfo import ZoneInfo
 import requests
 from collections import defaultdict
 from lxml import etree
@@ -12,8 +13,30 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
+DIAS_ES = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+MESES_ES = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+]
+
+
+def obtener_hora_madrid():
+    """Devuelve la hora actual en la zona horaria de Madrid (España),
+    ajustándose automáticamente a horario de invierno/verano."""
+    return datetime.datetime.now(ZoneInfo("Europe/Madrid"))
+
+
+def obtener_fecha_hora_generacion():
+    """Cadena legible en español con la fecha y hora de generación del boletín,
+    en hora de Madrid, para anteponerla al propio boletín."""
+    ahora = obtener_hora_madrid()
+    dia_semana = DIAS_ES[ahora.weekday()]
+    mes = MESES_ES[ahora.month - 1]
+    return f"{dia_semana} {ahora.day} de {mes}, {ahora.hour:02d}:{ahora.minute:02d} horas"
+
+
 def obtener_saludo_y_momento():
-    hora = (datetime.datetime.utcnow() + datetime.timedelta(hours=2)).hour
+    hora = obtener_hora_madrid().hour
     if 6 <= hora < 12:
         return "Buenos días"
     elif 12 <= hora < 20:
@@ -21,18 +44,19 @@ def obtener_saludo_y_momento():
     else:
         return "Buenas noches"
 
+
 def limpiar_y_extraer_detalles(record):
     traducciones_causa = {
         "ROADWORKS": "Obras", "ROADMAINTENANCE": "Mantenimiento",
         "CARRIAGEWAYCLOSURE": "Corte total de calzada", "ACCIDENT": "Accidente",
         "POORWEATHERCONDITIONS": "Meteorología adversa", "SNOW": "Nieve",
-        "ICE": "Hielo", "FLOODING": "Inundación", "OBSTRUCTION": "Obstáculo",
+        "ICE": "Hielo", "FLOODING": "Inundación", "OBSTRUCTION": "Obstáculo en la vía",
         "TRAFFICCONGESTION": "Retención"
     }
 
     raw_texts = [t.strip() for t in record.xpath('.//text()') if t.strip()]
     municipios, provincia, causas = [], "", []
-    
+
     for t in raw_texts:
         t_clean = t.strip()
         if re.match(r'^\d{4}-\d{2}-\d{2}', t_clean) or re.match(r'^-?\d+\.\d+$', t_clean) or re.match(r'^[A-Z0-9_]{8,}$', t_clean):
@@ -55,9 +79,11 @@ def limpiar_y_extraer_detalles(record):
     causa_str = f"Incidencia: {', '.join(set(causas))}" if causas else "Afección en la vía"
     return f"{provincia} | {ubicacion_str} | {causa_str}"
 
+
 def obtener_incidencias_texto():
     url = "https://nap.dgt.es/datex2/v3/dgt/SituationPublication/datex2_v37.xml"
     headers = {'User-Agent': 'Mozilla/5.0'}
+
     regiones_mapa = {
         "ARAGÓN": ["ZARAGOZA", "HUESCA", "TERUEL", "ARAGON", "ARAGÓN"],
         "COMUNIDAD FORAL DE NAVARRA": ["NAVARRA", "PAMPLONA"],
@@ -67,13 +93,16 @@ def obtener_incidencias_texto():
     try:
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
+
         parser = etree.XMLParser(recover=True, encoding='utf-8')
         root = etree.fromstring(response.content, parser=parser)
+
         incidencias_por_zona = defaultdict(list)
 
         for record in root.xpath('//*[local-name()="situationRecord"]'):
             roads = record.xpath('.//*[local-name()="roadName"]/text()')
             road_name = roads[0].strip() if roads else "Vía local"
+
             raw_texts = [t.strip() for t in record.xpath('.//text()') if t.strip()]
             texto_evaluacion = f"{road_name} " + " ".join(raw_texts).upper()
 
@@ -93,8 +122,10 @@ def obtener_incidencias_texto():
                 texto_resultado += f"\n--- REGIÓN: {reg} ---\n" + "\n".join(incidencias_por_zona[reg]) + "\n"
 
         return texto_resultado if texto_resultado else "Sin incidencias."
+
     except Exception as e:
         return f"Error extrayendo datos: {e}"
+
 
 def acelerar_audio(archivo_entrada, archivo_salida, velocidad=1.25):
     audio = AudioSegment.from_file(archivo_entrada)
@@ -102,11 +133,12 @@ def acelerar_audio(archivo_entrada, archivo_salida, velocidad=1.25):
     audio_rapido = audio_rapido.set_frame_rate(audio.frame_rate)
     audio_rapido.export(archivo_salida, format="mp3")
 
+
 def generar_voz_espanol(texto, archivo_salida="boletin_trafico.mp3", velocidad=1.25):
     texto_limpio = re.sub(r'[*#\_]', '', texto)
     partes = re.split(r'(?<=[.?!])\s+', texto_limpio)
-    fragmentos = []
 
+    fragmentos = []
     for parte in partes:
         if len(parte) > 180:
             fragmentos.extend(re.split(r'(?<=[,;])\s+', parte))
@@ -134,9 +166,9 @@ def generar_voz_espanol(texto, archivo_salida="boletin_trafico.mp3", velocidad=1
         return True
     return False
 
+
 def enviar_a_telegram(archivo_audio, texto_transcripcion):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendAudio"
-    
     caption = f"🎙️ **Boletín de Tráfico DGT**\n\n{texto_transcripcion}"
     if len(caption) > 1024:
         caption = caption[:1020] + "..."
@@ -146,39 +178,43 @@ def enviar_a_telegram(archivo_audio, texto_transcripcion):
         files = {"audio": audio}
         requests.post(url, data=payload, files=files)
 
+
 def main():
     datos_trafico = obtener_incidencias_texto()
     if "Sin incidencias" in datos_trafico or "Error" in datos_trafico:
         return
 
     saludo_dinamico = obtener_saludo_y_momento()
+    fecha_hora_str = obtener_fecha_hora_generacion()
+
     client = genai.Client(api_key=GEMINI_API_KEY)
 
     prompt = f"""
-    Eres un locutor de radio experto en información de tráfico y tiempo regional. Genera un boletín locutado muy breve y fluido (110-130 palabras) para ser leído en voz alta sobre las incidencias en tiempo real de la DGT para Aragón, Navarra y La Rioja.
+Eres un locutor de radio experto en información de tráfico y tiempo regional. Genera un boletín locutado fluido (170-210 palabras) para ser leído en voz alta sobre las incidencias en tiempo real de la DGT para Aragón, Navarra y La Rioja.
 
-    REGLAS DE ESTRUCTURA Y FORMATO:
-    1. Saludo dinámico: Comienza obligatoriamente con el saludo "{saludo_dinamico}".
-    2. Apunte meteorológico rápido: Tras el saludo, incluye una frase muy breve (10-15 palabras) sobre la situación del tiempo en el valle del Ebro y la zona norte.
-    3. Estado del tráfico: Resume de forma continua las incidencias más destacadas por regiones.
-    4. Sin marcas visuales: NO uses emojis, asteriscos (*) ni encabezados markdown (##).
-    5. Nombres conocidos: Asocia nombres populares a las carreteras (ej. "Autovía de Logroño", "Carretera de Belate", "Ronda de Zaragoza").
+REGLAS DE ESTRUCTURA Y FORMATO:
+1. Saludo dinámico: Comienza obligatoriamente con el saludo "{saludo_dinamico}". No menciones ni inventes tú la fecha o la hora: ya se añaden aparte, antes de tu texto.
+2. Apunte meteorológico rápido: Tras el saludo, incluye una frase muy breve (10-15 palabras) sobre la situación del tiempo en el valle del Ebro y la zona norte.
+3. Estado del tráfico: Resume de forma continua las incidencias por regiones. Incluye tanto las incidencias graves (accidentes, cortes de calzada, meteorología adversa) como las más leves pero relevantes para quien conduce por trabajo por esas zonas: retenciones, objetos en la vía, obras y mantenimiento. Menciona las leves de forma breve y ágil, sin detenerte tanto como en las graves, para que el boletín sea algo más largo pero no resulte pesado de escuchar.
+4. Sin marcas visuales: NO uses emojis, asteriscos (*) ni encabezados markdown (##).
+5. Nombres conocidos: Asocia nombres populares a las carreteras (ej. "Autovía de Logroño", "Carretera de Belate", "Ronda de Zaragoza").
 
-    DATOS DGT:
-    {datos_trafico}
-    """
+DATOS DGT:
+{datos_trafico}
+"""
 
     response = client.models.generate_content(
         model='gemini-3.6-flash',
         contents=prompt
     )
 
-    texto_informe = response.text
-    archivo_mp3 = "boletin_trafico.mp3"
+    texto_generado = response.text.strip()
+    texto_informe = f"Boletín de tráfico actualizado el {fecha_hora_str}. {texto_generado}"
 
+    archivo_mp3 = "boletin_trafico.mp3"
     if generar_voz_espanol(texto_informe, archivo_mp3, velocidad=1.25):
         enviar_a_telegram(archivo_mp3, texto_informe)
 
+
 if __name__ == "__main__":
     main()
-
