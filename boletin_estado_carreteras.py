@@ -195,10 +195,14 @@ def obtener_incidencias_texto():
         return f"Error extrayendo datos: {e}"
 
 
-def obtener_incidencias_calles_zaragoza():
+def obtener_incidencias_calles_zaragoza(intentos=3, espera_inicial=5):
     """Consulta el dataset abierto 'Incidencias en la Vía Pública' del Ayuntamiento
     de Zaragoza (tipo 1: cortes de tráfico, tipo 2: afecciones importantes/obras/
-    desvíos; se excluyen los cortes de agua, tipo 0)."""
+    desvíos; se excluyen los cortes de agua, tipo 0).
+
+    El servidor de zaragoza.es a veces tarda en responder o no contesta a tiempo
+    (timeout de conexión intermitente), así que se reintenta unas pocas veces con
+    espera creciente antes de darse por vencido."""
     url = "https://www.zaragoza.es/sede/servicio/via-publica/incidencia.json"
     params = {"srsname": "utm30n", "rows": 30, "q": "tipo.id==1,tipo.id==2"}
     headers = {
@@ -206,48 +210,60 @@ def obtener_incidencias_calles_zaragoza():
         'Accept': 'application/json'
     }
 
-    try:
-        response = requests.get(url, params=params, headers=headers, timeout=20)
-        response.raise_for_status()
-        data = response.json()
+    ultimo_error = None
+    for intento in range(1, intentos + 1):
+        try:
+            response = requests.get(url, params=params, headers=headers, timeout=20)
+            response.raise_for_status()
+            data = response.json()
 
-        if isinstance(data, list):
-            registros = data
-        elif isinstance(data, dict):
-            registros = data.get("result") or data.get("incidencia") or data.get("results") or data.get("items") or []
-        else:
-            registros = []
+            if isinstance(data, list):
+                registros = data
+            elif isinstance(data, dict):
+                registros = data.get("result") or data.get("incidencia") or data.get("results") or data.get("items") or []
+            else:
+                registros = []
 
-        lineas = []
-        for item in registros:
-            if not isinstance(item, dict):
-                continue
+            lineas = []
+            for item in registros:
+                if not isinstance(item, dict):
+                    continue
 
-            calle = item.get("calle") or item.get("title") or item.get("nombre") or "Vía no especificada"
-            tramo = item.get("tramo") or ""
-            motivo = item.get("motivo") or item.get("description") or "Obras/afección en la vía"
-            inicio = item.get("inicio") or ""
-            fin = item.get("fin") or ""
+                calle = item.get("calle") or item.get("title") or item.get("nombre") or "Vía no especificada"
+                tramo = item.get("tramo") or ""
+                motivo = item.get("motivo") or item.get("description") or "Obras/afección en la vía"
+                inicio = item.get("inicio") or ""
+                fin = item.get("fin") or ""
 
-            # Limpiar la marca de tiempo 'T00:00:00' si viene en los strings
-            if fin and 'T' in str(fin):
-                fin = str(fin).split('T')[0]
-            if inicio and 'T' in str(inicio):
-                inicio = str(inicio).split('T')[0]
+                # Limpiar la marca de tiempo 'T00:00:00' si viene en los strings
+                if fin and 'T' in str(fin):
+                    fin = str(fin).split('T')[0]
+                if inicio and 'T' in str(inicio):
+                    inicio = str(inicio).split('T')[0]
 
-            partes = [str(calle)]
-            if tramo:
-                partes.append(str(tramo))
-            partes.append(str(motivo))
-            if inicio or fin:
-                partes.append(f"(hasta {fin})" if fin else f"(desde {inicio})")
+                partes = [str(calle)]
+                if tramo:
+                    partes.append(str(tramo))
+                partes.append(str(motivo))
+                if inicio or fin:
+                    partes.append(f"(hasta {fin})" if fin else f"(desde {inicio})")
 
-            lineas.append("- " + " | ".join(p for p in partes if p))
+                lineas.append("- " + " | ".join(p for p in partes if p))
 
-        return "\n".join(lineas) if lineas else "Sin incidencias destacadas en la ciudad."
+            return "\n".join(lineas) if lineas else "Sin incidencias destacadas en la ciudad."
 
-    except Exception as e:
-        return f"No se pudo consultar incidencias municipales de Zaragoza: {e}"
+        except (requests.exceptions.ConnectTimeout, requests.exceptions.ReadTimeout,
+                requests.exceptions.ConnectionError) as e:
+            ultimo_error = e
+            print(f"Aviso: zaragoza.es no responde (intento {intento}/{intentos}): {e}")
+            if intento < intentos:
+                time.sleep(espera_inicial * intento)
+        except Exception as e:
+            # Errores no relacionados con conectividad (JSON inválido, HTTP 4xx/5xx
+            # persistente, etc.): no merece la pena reintentar.
+            return f"No se pudo consultar incidencias municipales de Zaragoza: {e}"
+
+    return f"No se pudo consultar incidencias municipales de Zaragoza tras {intentos} intentos: {ultimo_error}"
 
 
 def acelerar_audio(archivo_entrada, archivo_salida, velocidad=1.25):
