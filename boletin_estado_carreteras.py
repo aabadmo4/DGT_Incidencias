@@ -206,7 +206,7 @@ def obtener_incidencias_calles_zaragoza(intentos=3, espera_inicial=5):
     url = "https://www.zaragoza.es/sede/servicio/via-publica/incidencia.json"
     #se omite la siguiente linea para evitar errores en la gonsulta
     #params = {"srsname": "utm30n", "rows": 30, "q": "tipo.id==1,tipo.id==2"}
-    params = {"rows": 30, "q": "tipo.id==1,tipo.id==2"}
+    params = {"rows": 30}
     headers = {
         'User-Agent': 'Mozilla/5.0',
         'Accept': 'application/json'
@@ -215,7 +215,7 @@ def obtener_incidencias_calles_zaragoza(intentos=3, espera_inicial=5):
     ultimo_error = None
     for intento in range(1, intentos + 1):
         try:
-            response = requests.get(url, params=params, headers=headers, timeout=20)
+            response = requests.get(url, params=params, headers=headers, timeout=35)
             response.raise_for_status()
             data = response.json()
 
