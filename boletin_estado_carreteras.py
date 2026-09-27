@@ -358,7 +358,7 @@ ORDEN SECUENCIAL OBLIGATORIO DE LA LOCUCIÓN:
    - Justo después de la meteorología, pasa a informar sobre las calles de la ciudad de Zaragoza.
    - Revisa TODAS las incidencias urbanas proporcionadas en "DATOS AYUNTAMIENTO DE ZARAGOZA".
    - Ofrece un panorama representativo: menciona los cortes y obras más destacados por el nombre exacto de la calle o avenida que aparece en los datos, sin omitir puntos relevantes. Si hay obras menores secundarias, puedes agruparlas de forma natural.
-   - Si el texto de esos datos indica que no hay incidencias o que hubo un error, salta a la siguiente sección en silencio sin mencionarlo.
+   - Si el texto de esos datos indica que no hay incidencias o que hubo un error, indicalo.
 
 3. CARRETERAS INTERURBANAS DE DGT (Zaragoza provincia y resto):
    - Dedica la parte principal de la información interurbana a las carreteras de la provincia de Zaragoza. Incluye TODAS las incidencias (retenciones, obras, obstáculos) indicando sentido, carril o punto kilométrico cuando existan en los datos.
